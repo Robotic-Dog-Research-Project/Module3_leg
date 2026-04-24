@@ -29,20 +29,22 @@ STATE_BY_CODE = {
     "01": "down",
 }
 
-START_LEG_ANGLE = 45.0
+START_LEG_ANGLE = 90.0
+MAX_ = 70
+MIN_ = 15
 LEG_RANGE = 60.0          # +/- degrees around initial
-STEP_DEG = 1.0            # degrees per tick
-TICK_INTERVAL = 0.05      # seconds between ticks (~20 Hz)
+STEP_DEG = 0.5            # degrees per tick
+TICK_INTERVAL = 1       # seconds between ticks (~10 Hz)
 I2C_ADDRESS = 0x08
 I2C_BUS_NUM = 1
 
 
 class LegController:
     def __init__(self, i2c_addr=I2C_ADDRESS, bus_num=I2C_BUS_NUM):
-        self.left_leg = START_LEG_ANGLE
-        self.left_joint = 0.0
-        self.right_leg = START_LEG_ANGLE
-        self.right_joint = 0.0
+        self.left_leg = 0.0
+        self.left_joint = START_LEG_ANGLE
+        self.right_leg = 0.0
+        self.right_joint = START_LEG_ANGLE
         self.left_initial = START_LEG_ANGLE
         self.right_initial = START_LEG_ANGLE
 
@@ -57,7 +59,7 @@ class LegController:
         if smbus:
             try:
                 self.bus = smbus.SMBus(bus_num)
-                time.sleep(0.01)
+                time.sleep(1)
             except Exception:
                 self.bus = None
         else:
@@ -72,19 +74,21 @@ class LegController:
 
     def _step(self, angle, initial, cmd):
         if cmd == "up":
-            return min(angle + STEP_DEG, initial + LEG_RANGE)
+            new_angle = angle - STEP_DEG
+            return min(new_angle, MIN_)  # clamp to maximum
         if cmd == "down":
-            return max(angle - STEP_DEG, initial - LEG_RANGE)
+            new_angle = angle + STEP_DEG
+            return max(new_angle, MAX_)  # clamp to minimum
         return angle
 
     def run(self):
         while not self.stop_event.is_set():
             with self.lock:
-                new_left = self._step(self.left_leg, self.left_initial, self.left_cmd)
-                new_right = self._step(self.right_leg, self.right_initial, self.right_cmd)
-                changed = (new_left != self.left_leg) or (new_right != self.right_leg)
-                self.left_leg = new_left
-                self.right_leg = new_right
+                new_left = self._step(self.left_joint, self.left_initial, self.left_cmd)
+                new_right = self._step(self.right_joint, self.right_initial, self.right_cmd)
+                changed = (new_left != self.left_joint) or (new_right != self.right_joint)
+                self.left_joint = new_left
+                self.right_joint = new_right
             if changed:
                 self.send_data()
             time.sleep(TICK_INTERVAL)
